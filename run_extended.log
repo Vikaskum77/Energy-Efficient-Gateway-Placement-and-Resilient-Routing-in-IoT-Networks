@@ -1,0 +1,10 @@
+[A] elbow k=3 | best silhouette k=2 | LOWEST TOTAL COST k=5
+[B] k=5: worst-case delivery  no-backup=68.0%  backup=74.0%  backup+spare=98.5%
+[C] k=2  (direct link range 80 m, relay range 40 m)
+    Direct (single hop)                nodes able to reach a gateway: 95.5%
+    Multi-hop (min energy)             nodes able to reach a gateway: 97.5%
+    Multi-hop (residual-energy aware)  nodes able to reach a gateway: 97.5%
+    Direct (single hop)                first node dead:   370 | 50% dead:  2362 | packets delivered: 177282
+    Multi-hop (min energy)             first node dead:   279 | 50% dead:  1897 | packets delivered: 145470
+    Multi-hop (residual-energy aware)  first node dead:   785 | 50% dead:  1688 | packets delivered: 148546
+Saved: 4_optimal_k.png, 5_fault_tolerance.png, 6_multihop_lifetime.png, extended_results.csv

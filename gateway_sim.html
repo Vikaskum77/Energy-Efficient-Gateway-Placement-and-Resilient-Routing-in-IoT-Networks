@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>IoT Gateway Placement Simulator</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+--bg:#eef2f5;--panel:#fff;--ink:#1b2733;--mute:#5d6e80;--line:#d3dce5;--acc:#2f4bd8;--dead:#c2cad3}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#121920;--panel:#1b2430;--ink:#e5ebf1;--mute:#8d9fb1;--line:#2b3745;--acc:#8ea2ff;--dead:#394553}}
+:root[data-theme="dark"]{--bg:#121920;--panel:#1b2430;--ink:#e5ebf1;--mute:#8d9fb1;--line:#2b3745;--acc:#8ea2ff;--dead:#394553}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 "Segoe UI",system-ui,sans-serif}
+.wrap{max-width:1080px;margin:0 auto;padding:18px 14px 40px}
+h1{font-size:1.5rem;margin:0 0 2px}
+.sub{color:var(--mute);margin:0 0 14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:12px}
+.ctl{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center}
+.ctl label{display:flex;flex-direction:column;font-size:.8rem;color:var(--mute);min-width:130px}
+.ctl label b{color:var(--ink);font-weight:600}
+.btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+button{font:inherit;padding:7px 12px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--ink);cursor:pointer}
+button:hover{border-color:var(--acc)}button:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+button.p{background:var(--acc);border-color:var(--acc);color:#fff}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:760px){.grid{grid-template-columns:1fr}}
+.card h2{font-size:1.05rem;margin:0 0 8px}
+canvas{width:100%;height:auto;display:block}
+.st{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:6px;margin-top:8px;font-size:.78rem;color:var(--mute)}
+.st b{display:block;font-size:1.05rem;color:var(--ink)}
+#status{color:var(--mute);font-size:.9rem;margin:2px 0 10px;min-height:1.4em}
+.tbl{overflow-x:auto}
+</style></head>
+<body><div class="wrap">
+<h1>IoT Gateway Placement Simulator</h1>
+<p class="sub">Same sensor nodes, same number of gateways: random placement vs K-Means placement.</p>
+
+<div class="card">
+ <div class="ctl">
+  <label>Sensor nodes: <b id="nv">200</b><input id="n" type="range" min="50" max="400" step="10" value="200"></label>
+  <label>Gateways (k): <b id="kv">4</b><input id="k" type="range" min="1" max="8" value="4"></label>
+  <label>Speed (rounds/frame): <b id="sv">10</b><input id="s" type="range" min="1" max="50" value="10"></label>
+  <label>Routing<select id="rt"><option value="direct">Direct to gateway</option><option value="mh">Multi-hop (energy-aware)</option></select></label>
+  <label style="flex-direction:row;gap:6px;align-items:center;color:var(--ink)"><input id="bk" type="checkbox" checked> Backup gateway (failover)</label>
+ </div>
+ <div class="btns">
+  <button id="bKM" class="p">Run K-Means</button>
+  <button id="bStep">K-Means step</button>
+  <button id="bRoll">Re-roll random gateways</button>
+  <button id="bNodes">Redeploy nodes</button>
+  <button id="bStart" class="p">Start battery simulation</button>
+  <button id="bReset">Reset batteries</button>
+  <button id="bFail">Fail busiest gateway</button>
+  <button id="bBest">Find best k (cost)</button>
+ </div>
+</div>
+<div id="status"></div>
+
+<div class="grid">
+ <div class="card"><h2>Random placement</h2><canvas id="cA" width="600" height="600"></canvas>
+  <div class="st" id="stA"></div></div>
+ <div class="card"><h2>K-Means placement</h2><canvas id="cB" width="600" height="600"></canvas>
+  <div class="st" id="stB"></div></div>
+</div>
+<div class="card"><h2>Optimal number of gateways (total cost vs k)</h2><canvas id="ck" width="1000" height="240"></canvas><p id="kt" style="color:var(--mute);margin:6px 0 0">Press "Find best k". Grey = gateway cost, coloured = battery replacement cost.</p></div>
+<div class="card"><h2>Alive nodes over time (grey = random, blue = K-Means)</h2><canvas id="ch" width="1000" height="260"></canvas></div>
+</div>
+
+<script>
+const W=200,E0=.5,PB=4000,EE=50e-9,EA=100e-12,TXP=.5,MAXR=40000;
+const PAL=[0,28,150,200,265,310,95,235].map(h=>`hsl(${h} 65% 48%)`);
+const $=id=>document.getElementById(id);
+const eTx=d=>PB*(EE+EA*d*d);
+const RC=80,RH=40,RX=PB*EE,GWC=200,BC=5,HOR=5000;
+let nodes=[],running=false,kmTimer=null;
+const A={cv:$('cA'),g:[],name:'A'},B={cv:$('cB'),g:[],name:'B'};
+A.ctx=A.cv.getContext('2d');B.ctx=B.cv.getContext('2d');
+const P=[A,B];
+const gauss=()=>Math.sqrt(-2*Math.log(1-Math.random()))*Math.cos(6.2832*Math.random());
+const cl=v=>Math.max(2,Math.min(W-2,v));
+const N=()=>+$('n').value,K=()=>+$('k').value;
+
+function deploy(){
+ const c=[0,1,2].map(()=>({x:40+Math.random()*120,y:40+Math.random()*120}));
+ nodes=[];const nc=Math.floor(N()*.7);
+ for(let i=0;i<N();i++){
+  if(i<nc){const q=c[i%3];nodes.push({x:cl(q.x+gauss()*15),y:cl(q.y+gauss()*15)});}
+  else nodes.push({x:Math.random()*W,y:Math.random()*W});
+ }
+}
+function assignLegacy(p){
+ p.asg=[];p.d=[];
+ nodes.forEach(n=>{let b=-1,bd=1e9;
+  p.g.forEach((g,j)=>{if(!g.alive)return;const d=Math.hypot(n.x-g.x,n.y-g.y);if(d<bd){bd=d;b=j;}});
+  p.asg.push(b);p.d.push(bd);});
+}
+function reset(p){
+ p.bat=nodes.map(()=>E0);p.dead=nodes.map(()=>false);p.round=0;p.fnd=null;p.hist=[1];p.alive=nodes.length;p.done=false;assign(p);
+}
+function randGW(){return Array.from({length:K()},()=>({x:Math.random()*W,y:Math.random()*W,alive:true}));}
+function initGW(){
+ A.g=randGW();
+ B.g=Array.from({length:K()},()=>{const n=nodes[Math.floor(Math.random()*nodes.length)];return{x:n.x,y:n.y,alive:true};});
+ P.forEach(reset);
+}
+function kmStep(){
+ reset(B);assign(B);
+ const s=B.g.map(()=>({x:0,y:0,c:0}));
+ nodes.forEach((n,i)=>{const j=B.asg[i];if(j>=0){s[j].x+=n.x;s[j].y+=n.y;s[j].c++;}});
+ let mv=0;
+ B.g.forEach((g,j)=>{if(s[j].c){const nx=s[j].x/s[j].c,ny=s[j].y/s[j].c;mv=Math.max(mv,Math.hypot(nx-g.x,ny-g.y));g.x=nx;g.y=ny;}});
+ reset(B);return mv;
+}
+function runKM(){
+ clearInterval(kmTimer);pause();let it=0;
+ kmTimer=setInterval(()=>{it++;const mv=kmStep();
+  $('status').textContent=`K-Means iteration ${it} (centroid movement ${mv.toFixed(2)} m)`;
+  if(mv<.05||it>40){clearInterval(kmTimer);$('status').textContent=`K-Means converged after ${it} iterations.`;}
+  render();},450);
+}
+function stepLegacy(p){
+ if(p.done)return;let alive=0;
+ for(let i=0;i<nodes.length;i++){
+  if(p.bat[i]>0){
+   if(p.asg[i]>=0&&Math.random()<TXP){p.bat[i]-=eTx(p.d[i]);if(p.bat[i]<=0){p.bat[i]=0;if(p.fnd==null)p.fnd=p.round+1;}}
+   if(p.bat[i]>0)alive++;
+  }
+ }
+ p.round++;p.alive=alive;if(p.round%5==0)p.hist.push(alive/nodes.length);
+ if(alive<=nodes.length*.05||p.round>=MAXR||!p.g.some(g=>g.alive))p.done=true;
+}
+function draw(p){
+ const c=p.ctx,s=p.cv.width/W,cs=getComputedStyle(document.documentElement);
+ const dead=cs.getPropertyValue('--dead'),ink=cs.getPropertyValue('--ink'),line=cs.getPropertyValue('--line');
+ c.clearRect(0,0,600,600);c.strokeStyle=line;c.lineWidth=1;c.strokeRect(.5,.5,599,599);
+ c.globalAlpha=.2;
+ nodes.forEach((n,i)=>{if(p.bat[i]>0&&p.nx[i]!=-99){const x=p.nx[i],g=x<0?p.g[-1-x]:nodes[x];c.strokeStyle=PAL[Math.max(p.asg[i],0)%8];c.beginPath();c.moveTo(n.x*s,n.y*s);c.lineTo(g.x*s,g.y*s);c.stroke();}});
+ c.globalAlpha=1;
+ nodes.forEach((n,i)=>{c.fillStyle=(p.bat[i]>0&&p.nx[i]!=-99)?PAL[Math.max(p.asg[i],0)%8]:dead;c.beginPath();c.arc(n.x*s,n.y*s,4,0,7);c.fill();});
+ p.g.forEach((g,j)=>{const x=g.x*s,y=g.y*s;c.fillStyle=g.alive?PAL[j%8]:dead;c.strokeStyle=ink;c.lineWidth=2.5;
+  c.fillRect(x-11,y-11,22,22);c.strokeRect(x-11,y-11,22,22);
+  if(!g.alive){c.beginPath();c.moveTo(x-11,y-11);c.lineTo(x+11,y+11);c.moveTo(x+11,y-11);c.lineTo(x-11,y+11);c.stroke();}});
+}
+function statsLegacy(p,el){
+ let sd=0,sc=0,e=0;
+ nodes.forEach((n,i)=>{if(p.bat[i]>0&&p.asg[i]>=0){sd+=p.d[i];sc++;e+=eTx(p.d[i]);}});
+ el.innerHTML=`<div>Avg distance<b>${sc?(sd/sc).toFixed(1):'-'} m</b></div><div>Expected energy / round<b>${(e*TXP*1e3).toFixed(1)} mJ</b></div><div>Alive nodes<b>${p.alive}/${nodes.length}</b></div><div>First node dead<b>${p.fnd?'round '+p.fnd:'-'}</b></div>`;
+}
+function chart(){
+ const cv=$('ch'),c=cv.getContext('2d'),w=cv.width,h=cv.height,pd=34;
+ const cs=getComputedStyle(document.documentElement);
+ c.clearRect(0,0,w,h);c.font='12px sans-serif';c.fillStyle=cs.getPropertyValue('--mute');c.strokeStyle=cs.getPropertyValue('--line');
+ const mx=Math.max(100,A.hist.length*5,B.hist.length*5);
+ for(let i=0;i<=4;i++){const y=pd/2+(h-pd*1.5)*(1-i/4);c.beginPath();c.moveTo(pd,y);c.lineTo(w-8,y);c.stroke();c.fillText(i*25+'%',2,y+4);}
+ c.fillText('rounds: 0 to '+mx,pd,h-6);
+ [[A,cs.getPropertyValue('--dead')],[B,cs.getPropertyValue('--acc')]].forEach(([p,col])=>{
+  c.strokeStyle=col;c.lineWidth=3;c.beginPath();
+  p.hist.forEach((v,i)=>{const x=pd+(w-pd-8)*(i*5/mx),y=pd/2+(h-pd*1.5)*(1-v);i?c.lineTo(x,y):c.moveTo(x,y);});c.stroke();});
+}
+function render(){draw(A);draw(B);stats(A,$('stA'));stats(B,$('stB'));chart();}
+function loop(){
+ if(running){for(let i=0;i<+$('s').value;i++)P.forEach(stepP);
+  if(A.done&&B.done)pause();}
+ render();requestAnimationFrame(loop);
+}
+function pause(){running=false;$('bStart').textContent='Start battery simulation';}
+$('bStart').onclick=()=>{running=!running;$('bStart').textContent=running?'Pause':'Resume battery simulation';};
+$('bKM').onclick=runKM;
+$('bStep').onclick=()=>{clearInterval(kmTimer);pause();const mv=kmStep();$('status').textContent=`One K-Means step done (centroid movement ${mv.toFixed(2)} m)`;};
+$('bRoll').onclick=()=>{pause();A.g=randGW();reset(A);$('status').textContent='Random gateways re-rolled.';};
+$('bNodes').onclick=()=>{pause();clearInterval(kmTimer);deploy();initGW();runKM();};
+$('bReset').onclick=()=>{pause();P.forEach(reset);$('status').textContent='Batteries reset to full.';};
+$('bFail').onclick=()=>{P.forEach(p=>{const cnt=p.g.map(()=>0);p.asg.forEach(j=>{if(j>=0)cnt[j]++;});
+  let b=-1,m=-1;cnt.forEach((v,j)=>{if(p.g[j].alive&&v>m){m=v;b=j;}});if(b>=0){p.g[b].alive=false;assign(p);}});
+  $('status').textContent='Busiest gateway failed in both panels. Nodes reconnect to the nearest working gateway.';};
+$('n').oninput=()=>{$('nv').textContent=N();pause();clearInterval(kmTimer);deploy();initGW();runKM();};
+$('k').oninput=()=>{$('kv').textContent=K();pause();clearInterval(kmTimer);initGW();runKM();};
+$('s').oninput=()=>{$('sv').textContent=$('s').value;};
+$('rt').onchange=$('bk').onchange=()=>{pause();P.forEach(reset);$('status').textContent='Routing/backup setting changed. Batteries reset.';};
+function kmH(k){let bs=1e18;
+ for(let t=0;t<3;t++){let g=Array.from({length:k},()=>{const n=nodes[Math.random()*nodes.length|0];return{x:n.x,y:n.y};});
+  for(let it=0;it<15;it++){const a=g.map(()=>({x:0,y:0,c:0}));
+   nodes.forEach(n=>{let b=0,bd=1e9;g.forEach((q,j)=>{const d=Math.hypot(n.x-q.x,n.y-q.y);if(d<bd){bd=d;b=j;}});a[b].x+=n.x;a[b].y+=n.y;a[b].c++;});
+   g=g.map((q,j)=>a[j].c?{x:a[j].x/a[j].c,y:a[j].y/a[j].c}:q);}
+  let e=0;nodes.forEach(n=>{let bd=1e9;g.forEach(q=>{bd=Math.min(bd,Math.hypot(n.x-q.x,n.y-q.y));});e+=eTx(bd);});bs=Math.min(bs,e);}
+ return bs;}
+$('bBest').onclick=()=>{pause();clearInterval(kmTimer);const R=[];
+ for(let k=1;k<=10;k++)R.push({k,g:k*GWC,b:kmH(k)*TXP*HOR/E0*BC});
+ const best=R.reduce((a,b)=>a.g+a.b<=b.g+b.b?a:b);
+ const c=$('ck').getContext('2d'),cs=getComputedStyle(document.documentElement),h=240,mx=Math.max(...R.map(r=>r.g+r.b));
+ c.clearRect(0,0,1000,h);c.font='13px sans-serif';
+ R.forEach((r,i)=>{const x=40+i*95,hg=r.g/mx*(h-50),hb=r.b/mx*(h-50);
+  c.fillStyle=cs.getPropertyValue('--dead');c.fillRect(x,h-25-hg,70,hg);
+  c.fillStyle=cs.getPropertyValue(r.k==best.k?'--acc':'--mute');c.fillRect(x,h-25-hg-hb,70,hb);
+  c.fillStyle=cs.getPropertyValue('--ink');c.fillText('k='+r.k,x+20,h-8);});
+ $('kt').textContent=`Lowest total cost at k = ${best.k} (gateway cost + battery replacement cost over ${HOR} rounds). Slider set to ${best.k}.`;
+ $('k').value=best.k;$('kv').textContent=best.k;initGW();runKM();};
+function assign(p){
+ p.asg=[];p.d=[];const bk=$('bk').checked;
+ nodes.forEach(n=>{let b=-1,bd=1e9,pj=-1,pd=1e9;
+  p.g.forEach((g,j)=>{const d=Math.hypot(n.x-g.x,n.y-g.y);if(d<pd){pd=d;pj=j;}if(g.alive&&d<bd){bd=d;b=j;}});
+  const ok=bk?(bd<=RC?b:-1):((pj>=0&&p.g[pj].alive&&pd<=RC)?pj:-1);
+  p.asg.push(ok);p.d.push(bk?bd:pd);});
+ route(p);}
+function route(p){
+ const n=nodes.length,mh=$('rt').value=='mh',w=i=>mh?E0/Math.max(p.bat[i],1e-3):1;
+ p.nx=Array(n).fill(-99);const cost=Array(n).fill(1e18),dn=Array(n).fill(false);
+ for(let i=0;i<n;i++)if(p.bat[i]>0&&p.asg[i]>=0){cost[i]=eTx(p.d[i])*w(i);p.nx[i]=-1-p.asg[i];}
+ if(!mh)return;
+ for(;;){let u=-1,b=1e17;for(let i=0;i<n;i++)if(!dn[i]&&cost[i]<b){b=cost[i];u=i;}
+  if(u<0)break;dn[u]=true;
+  for(let j=0;j<n;j++){if(dn[j]||p.bat[j]<=0)continue;const d=Math.hypot(nodes[u].x-nodes[j].x,nodes[u].y-nodes[j].y);
+   if(d<=RH){const c=eTx(d)*w(j)+RX*w(u)+cost[u];if(c<cost[j]){cost[j]=c;p.nx[j]=u;}}}}}
+function stepP(p){
+ if(p.done)return;
+ if(p.round%50==0||p.dirty){route(p);p.dirty=false;}
+ for(let i=0;i<nodes.length;i++){
+  if(p.dead[i]||p.nx[i]==-99||Math.random()>=TXP)continue;
+  let c=i;
+  for(let h=0;h<30;h++){const x=p.nx[c];
+   if(x==-99||(x>=0&&p.dead[x]))break;
+   if(x<0){const g=p.g[-1-x];p.bat[c]-=eTx(Math.hypot(nodes[c].x-g.x,nodes[c].y-g.y));break;}
+   p.bat[c]-=eTx(Math.hypot(nodes[c].x-nodes[x].x,nodes[c].y-nodes[x].y));p.bat[x]-=RX;c=x;}}
+ let alive=0,act=0;
+ for(let i=0;i<nodes.length;i++){
+  if(!p.dead[i]&&p.bat[i]<=0){p.dead[i]=true;p.bat[i]=0;if(p.fnd==null)p.fnd=p.round+1;p.dirty=true;}
+  if(!p.dead[i]){alive++;if(p.nx[i]!=-99)act++;}}
+ p.round++;p.alive=alive;if(p.round%5==0)p.hist.push(alive/nodes.length);
+ if(alive<=nodes.length*.05||act==0||p.round>=MAXR||!p.g.some(g=>g.alive))p.done=true;}
+function pathE(p,i){let e=0,c=i;for(let h=0;h<30;h++){const x=p.nx[c];if(x==-99)return e;
+ if(x<0){const g=p.g[-1-x];return e+eTx(Math.hypot(nodes[c].x-g.x,nodes[c].y-g.y));}
+ e+=eTx(Math.hypot(nodes[c].x-nodes[x].x,nodes[c].y-nodes[x].y))+RX;c=x;}return e;}
+function stats(p,el){
+ let sd=0,sa=0,e=0,cn=0;
+ nodes.forEach((n,i)=>{if(p.nx[i]!=-99)cn++;if(p.dead[i]||p.nx[i]==-99)return;if(p.asg[i]>=0){sd+=p.d[i];sa++;}e+=pathE(p,i);});
+ el.innerHTML=`<div>Avg distance<b>${sa?(sd/sa).toFixed(1):'-'} m</b></div><div>Expected energy / round<b>${(e*TXP*1e3).toFixed(1)} mJ</b></div><div>Alive nodes<b>${p.alive}/${nodes.length}</b></div><div>First node dead<b>${p.fnd?'round '+p.fnd:'-'}</b></div><div>Delivery (connected)<b>${(cn/nodes.length*100).toFixed(0)}%</b></div>`;
+}
+deploy();initGW();runKM();loop();
+</script></body></html>

@@ -1,0 +1,46 @@
+part,item,value
+A,k=1,total_cost=8766.0
+A,k=2,total_cost=4443.9
+A,k=3,total_cost=3734.0
+A,k=4,total_cost=3346.0
+A,k=5,total_cost=3239.1
+A,k=6,total_cost=3281.0
+A,k=7,total_cost=3339.5
+A,k=8,total_cost=3433.8
+A,k=9,total_cost=3554.2
+A,k=10,total_cost=3683.3
+B,Random + backup k=1,0.00
+B,Random + backup k=2,29.28
+B,Random + backup k=3,44.25
+B,Random + backup k=4,66.48
+B,Random + backup k=5,73.00
+B,Random + backup k=6,81.03
+B,Random + backup k=7,87.08
+B,Random + backup k=8,91.20
+B,K-Means, no backup k=1,0.00
+B,K-Means, no backup k=2,33.00
+B,K-Means, no backup k=3,59.50
+B,K-Means, no backup k=4,65.50
+B,K-Means, no backup k=5,68.00
+B,K-Means, no backup k=6,69.00
+B,K-Means, no backup k=7,75.50
+B,K-Means, no backup k=8,73.50
+B,K-Means + backup k=1,0.00
+B,K-Means + backup k=2,39.00
+B,K-Means + backup k=3,69.50
+B,K-Means + backup k=4,73.50
+B,K-Means + backup k=5,74.00
+B,K-Means + backup k=6,75.00
+B,K-Means + backup k=7,98.00
+B,K-Means + backup k=8,98.00
+B,K-Means + backup + 1 smart spare gateway k=1,83.00
+B,K-Means + backup + 1 smart spare gateway k=2,90.00
+B,K-Means + backup + 1 smart spare gateway k=3,95.50
+B,K-Means + backup + 1 smart spare gateway k=4,96.00
+B,K-Means + backup + 1 smart spare gateway k=5,98.50
+B,K-Means + backup + 1 smart spare gateway k=6,98.50
+B,K-Means + backup + 1 smart spare gateway k=7,99.00
+B,K-Means + backup + 1 smart spare gateway k=8,100.00
+C,Direct (single hop),fnd=370;half=2362;delivered=177282
+C,Multi-hop (min energy),fnd=279;half=1897;delivered=145470
+C,Multi-hop (residual-energy aware),fnd=785;half=1688;delivered=148546

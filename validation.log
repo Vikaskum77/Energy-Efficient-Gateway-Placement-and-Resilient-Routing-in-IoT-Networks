@@ -1,0 +1,39 @@
+$ /opt/pyvenv/bin/python -m py_compile gateway_placement.py gateway_extended.py
+$ /opt/pyvenv/bin/python gateway_placement.py
+ k | Method   | AvgDist(m) | Energy/round(mJ) |    FND | 50% dead
+------------------------------------------------------------------
+ 1 | random   |      95.96 |          473.020 |     70 |      361
+ 1 | kmeans   |      55.70 |          171.320 |    150 |      805
+ 2 | random   |      69.34 |          263.727 |    104 |      602
+ 2 | kmeans   |      31.64 |           80.878 |    139 |     2151
+ 3 | random   |      57.72 |          198.248 |    132 |      855
+ 3 | kmeans   |      26.31 |           62.681 |    181 |     2515
+ 4 | random   |      52.52 |          162.505 |    178 |      970
+ 4 | kmeans   |      23.56 |           50.920 |    388 |     2734
+ 5 | random   |      43.02 |          115.292 |    203 |     1226
+ 5 | kmeans   |      21.41 |           44.783 |    484 |     2907
+ 6 | random   |      43.84 |          119.387 |    199 |     1214
+ 6 | kmeans   |      20.14 |           41.620 |    489 |     3013
+ 7 | random   |      36.13 |           88.802 |    291 |     1609
+ 7 | kmeans   |      18.71 |           38.790 |    501 |     3231
+ 8 | random   |      35.28 |           82.967 |    343 |     1580
+ 8 | kmeans   |      17.59 |           36.676 |    664 |     3358
+
+Central single gateway: avg_dist=59.44 m, FND=143
+
+At k=4: K-Means saves 68.7% expected energy/round vs random placement.
+
+Saved: 1_placement_comparison.png, 2_energy_vs_k.png, 3_lifetime_vs_k.png, results.csv
+$ /opt/pyvenv/bin/python gateway_extended.py
+[A] elbow k=3 | best silhouette k=2 | LOWEST TOTAL COST k=5
+[B] k=5: worst-case delivery  no-backup=68.0%  backup=74.0%  backup+spare=98.5%
+[C] k=2  (direct link range 80 m, relay range 40 m)
+    Direct (single hop)                nodes able to reach a gateway: 95.5%
+    Multi-hop (min energy)             nodes able to reach a gateway: 97.5%
+    Multi-hop (residual-energy aware)  nodes able to reach a gateway: 97.5%
+    Direct (single hop)                first node dead:   370 | 50% dead:  2362 | packets delivered: 177282
+    Multi-hop (min energy)             first node dead:   279 | 50% dead:  1897 | packets delivered: 145470
+    Multi-hop (residual-energy aware)  first node dead:   785 | 50% dead:  1688 | packets delivered: 148546
+Saved: 4_optimal_k.png, 5_fault_tolerance.png, 6_multihop_lifetime.png, extended_results.csv
+
+VALIDATION PASSED: scripts ran and all expected output files were checked.
